@@ -143,4 +143,3 @@ scripts/gen_certs.sh
 ```
 
 Only probe servers you own or have permission to test.
-# tls-forcer
