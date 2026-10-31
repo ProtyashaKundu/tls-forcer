@@ -1,0 +1,17 @@
+// ==========================================================================
+// FILE: dashboard_html.hpp.in                LAYER: build template
+//
+// WHAT THIS FILE DOES
+//   Template that CMake turns into build/generated/dashboard_html.hpp.
+//   configure_file() replaces the DASHBOARD_HTML placeholder with the full
+//   contents of web/dashboard.html, so the page is compiled INTO the
+//   tls_dashboard program (one self-contained executable).
+//
+// CONTENTS
+//   kDashboardHtml   const char array holding the whole page, written as a
+//                    raw string with a custom delimiter (TLSDASHHTML) so the
+//                    HTML needs no escaping. Edit web/dashboard.html, not this.
+// ==========================================================================
+
+#pragma once
+static const char kDashboardHtml[] = R"TLSDASHHTML(@DASHBOARD_HTML@)TLSDASHHTML";

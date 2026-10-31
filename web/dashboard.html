@@ -1,0 +1,744 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TLS Handshake Live</title>
+<style>
+:root{
+  --bg:#0d1117; --panel:#161b22; --panel2:#1c232d; --line:#30363d; --text:#e6edf3; --muted:#8b949e;
+  --plain:#f0b429; --enc:#3fb950; --hrr:#bc8cff; --alert:#f85149; --compat:#6e7681; --accent:#58a6ff;
+  --dns:#58a6ff; --tcp:#f0b429; --tls:#3fb950;
+  --chip:#21262d; --chipText:#c9d1d9; --shadow:0 1px 0 rgba(255,255,255,.03), 0 8px 24px rgba(0,0,0,.25);
+  --mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+}
+:root[data-theme="light"]{
+  --bg:#f6f8fa; --panel:#ffffff; --panel2:#f3f5f8; --line:#d0d7de; --text:#1f2328; --muted:#59636e;
+  --plain:#b7791f; --enc:#1a7f37; --hrr:#8250df; --alert:#cf222e; --compat:#8c959f; --accent:#0969da;
+  --dns:#0969da; --tcp:#b7791f; --tls:#1a7f37; --chip:#eef1f4; --chipText:#1f2328; --shadow:0 1px 3px rgba(0,0,0,.08);
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+button,input,select{font:inherit;color:inherit}
+.wrap{max-width:1380px;margin:0 auto;padding:16px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.brand{display:flex;align-items:center;gap:10px;font-size:20px;font-weight:700;letter-spacing:.2px}
+.brand svg{color:var(--enc)}
+.badge{font:12px var(--mono);padding:3px 8px;border-radius:999px;background:var(--chip);color:var(--muted);border:1px solid var(--line)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;box-shadow:var(--shadow)}
+.card h2{margin:0 0 12px;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.field{display:flex;flex-direction:column;gap:4px;min-width:140px}
+.field.grow{flex:1 1 200px}
+.field span{font-size:12px;color:var(--muted)}
+input,select{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:9px 11px;outline:none;min-width:0}
+input:focus,select:focus{border-color:var(--accent)}
+input.big{font-size:18px;font-weight:600}
+input.mono{font-family:var(--mono);font-size:13px}
+.btn{background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:8px 12px;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700;padding:10px 20px;font-size:16px}
+.btn.primary:disabled{opacity:.6;cursor:progress}
+.btn.small{padding:4px 10px;font-size:13px}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{max-width:100%;overflow:hidden;text-overflow:ellipsis;font:12px var(--mono);background:var(--chip);color:var(--chipText);border:1px solid var(--line);border-radius:999px;padding:3px 9px;white-space:nowrap}
+.chip.click{cursor:pointer}.chip.click:hover{border-color:var(--accent)}
+.chip.win{background:color-mix(in srgb,var(--enc) 22%,transparent);border-color:var(--enc);color:var(--text);font-weight:700}
+.chip.ks{border-style:dashed;border-color:var(--plain)}
+.chip.dim{opacity:.45}
+.chip.ok{border-color:var(--enc);color:var(--enc)}
+.chip.no{border-color:var(--alert);color:var(--alert)}
+.chip.more{cursor:pointer;border-style:dotted;color:var(--accent)}
+.lbl{font-size:12px;color:var(--muted);margin-right:4px}
+.controls{display:grid;gap:12px;margin-bottom:14px}
+.scen{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.opts{display:flex;gap:18px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.opts label{display:flex;gap:6px;align-items:center;cursor:pointer}
+kbd{font:11px var(--mono);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 4px}
+
+/* narration + summary */
+.narr{overflow-wrap:anywhere;font-size:17px;padding:12px 16px;border-radius:10px;margin-bottom:14px;border:1px solid var(--line);background:var(--panel)}
+.narr.ok{border-color:var(--enc)} .narr.err{border-color:var(--alert)} .narr.busy{border-color:var(--accent)}
+.narr b{font-weight:700}
+.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.stat .k{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.stat .v{font-size:18px;font-weight:700;margin-top:2px;word-break:break-word}
+.stat .s{font-size:12px;color:var(--muted);font-family:var(--mono)}
+
+/* sequence diagram */
+.main{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:14px;margin-bottom:14px}
+@media (max-width:980px){.main{grid-template-columns:1fr}}
+.seqhead{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:18px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
+.lanes{display:grid;grid-template-columns:1fr 1fr;font-weight:700;margin:6px 0 0}
+.lanes div{padding:6px 0}
+.lanes .c{padding-left:2%} .lanes .s{text-align:right;padding-right:2%}
+.lanes small{display:block;font-weight:400;color:var(--muted);font-family:var(--mono);font-size:12px}
+.seq{position:relative;min-height:220px;max-height:640px;overflow:auto;padding:4px 0 10px}
+.seq::before,.seq::after{content:"";position:absolute;top:0;bottom:0;width:3px;border-radius:2px;background:var(--line)}
+.seq::before{left:8%} .seq::after{right:8%}
+.empty{color:var(--muted);text-align:center;padding:70px 20px}
+.msg{--c:var(--plain);position:relative;margin:0 8%;height:54px;cursor:pointer;opacity:0;transform:translateY(6px);transition:opacity .25s,transform .25s}
+.msg.show{opacity:1;transform:none}
+.msg .line{position:absolute;left:0;right:0;top:30px;height:3px;background:var(--c);transform:scaleX(0);transition:transform .5s cubic-bezier(.2,.7,.2,1)}
+.msg.out .line{transform-origin:left} .msg.in .line{transform-origin:right}
+.msg.show .line{transform:scaleX(1)}
+.msg .line::after{content:"";position:absolute;top:-6px;border-top:7.5px solid transparent;border-bottom:7.5px solid transparent}
+.msg.out .line::after{right:-2px;border-left:12px solid var(--c)}
+.msg.in .line::after{left:-2px;border-right:12px solid var(--c)}
+.msg .label{position:absolute;left:0;right:0;top:4px;text-align:center;font-weight:700;color:var(--c);display:flex;justify-content:center;align-items:center;gap:6px;font-size:15px}
+.msg .meta{position:absolute;left:0;right:0;top:36px;text-align:center;font:11px var(--mono);color:var(--muted)}
+.msg:hover .label{text-decoration:underline}
+.msg.sel{background:color-mix(in srgb,var(--c) 10%,transparent);border-radius:8px}
+.k-enc{--c:var(--enc)} .k-plain{--c:var(--plain)} .k-hrr{--c:var(--hrr)} .k-alert{--c:var(--alert)} .k-compat,.k-ccs{--c:var(--compat)}
+.msg.k-compat .line{background:repeating-linear-gradient(90deg,var(--c) 0 6px,transparent 6px 11px)}
+.msg.post{opacity:.0}.msg.post.show{opacity:.75}
+.div{margin:6px 8%;text-align:center;font-size:12px;font-weight:600;color:var(--muted);opacity:0;transition:opacity .3s;display:flex;align-items:center;gap:10px}
+.div::before,.div::after{content:"";flex:1;border-top:1px dashed var(--line)}
+.div.show{opacity:1}
+.div.keys{color:var(--enc)} .div.keys::before,.div.keys::after{border-color:var(--enc)}
+.div.fail{color:var(--alert)} .div.fail::before,.div.fail::after{border-color:var(--alert)}
+.stepbar{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)}
+
+/* detail */
+.detail h3{margin:0 0 8px;font-size:22px}
+.pills{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.pill{font:12px var(--mono);border-radius:6px;padding:2px 8px;background:var(--chip);border:1px solid var(--line)}
+.pill.c{border-color:var(--c);color:var(--c)}
+.explain{font-size:15px;margin:0 0 14px;padding:10px 12px;background:var(--panel2);border-left:3px solid var(--accent);border-radius:6px}
+.kv{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;font-size:13px;margin:0}
+.kv dt{color:var(--muted)} .kv dd{margin:0;font-family:var(--mono);word-break:break-word}
+.sect{margin:12px 0 4px;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+
+/* lower cards */
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;margin-bottom:14px}
+@media (max-width:980px){.two{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:600px){.orow{grid-template-columns:minmax(0,1fr)!important}.seq::before{left:4%}.seq::after{right:4%}.msg,.div{margin-left:4%;margin-right:4%}.msg .label{font-size:13px}}
+.bar{display:flex;height:34px;border-radius:8px;overflow:hidden;background:var(--panel2);border:1px solid var(--line)}
+.bar div{display:flex;align-items:center;justify-content:center;font:12px var(--mono);color:#fff;min-width:0;overflow:hidden;white-space:nowrap;transition:width .6s}
+.timing-note{font-size:14px;margin-top:10px}
+.orow{display:grid;grid-template-columns:150px minmax(0,1fr);gap:10px;align-items:start;padding:8px 0;border-top:1px solid var(--line)}
+.orow:first-child{border-top:0}
+.orow .h{font-size:13px;color:var(--muted)}
+.chain{display:flex;gap:10px;align-items:stretch;flex-wrap:wrap}
+.cert{flex:1 1 250px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px}
+.cert .cn{font-weight:700;font-size:16px;word-break:break-all}
+.cert .role{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.arrowx{align-self:center;color:var(--muted);font-size:13px;text-align:center}
+.verify{display:inline-block;margin-bottom:10px;font-weight:700;padding:4px 10px;border-radius:6px}
+.verify.ok{color:var(--enc);border:1px solid var(--enc)} .verify.bad{color:var(--alert);border:1px solid var(--alert)}
+.probe-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px;margin-top:12px}
+.pcell{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--panel2)}
+.pcell .n{font:13px var(--mono);font-weight:700}
+.pcell .d{font-size:12px;color:var(--muted);word-break:break-word}
+.pcell.ok{border-color:var(--enc)} .pcell.ok .n{color:var(--enc)}
+.pcell.refused{border-color:var(--alert)} .pcell.refused .n{color:var(--alert)}
+.pcell.local{opacity:.55}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:7px 8px;border-top:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600;border-top:0;font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+td.mono{font-family:var(--mono);font-size:12px}
+tr.hist{cursor:pointer} tr.hist:hover td{background:var(--panel2)}
+.good{color:var(--enc);font-weight:700} .bad{color:var(--alert);font-weight:700}
+.muted{color:var(--muted)}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp .8s linear infinite;vertical-align:-2px;margin-right:8px}
+.keys-step{margin:14px 0 6px;font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.keyrow{display:grid;grid-template-columns:minmax(0,230px) minmax(0,1fr);gap:4px 16px;padding:10px 0;border-top:1px solid var(--line)}
+.keyrow:first-of-type{border-top:0}
+.keyrow .kname{font-weight:700;font-size:14px}
+.keyrow .kwhat{font-size:13px;color:var(--muted);margin-top:2px}
+.hex{align-self:start;font:12px/1.55 var(--mono);word-break:break-all;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+.hex .more{color:var(--accent);cursor:pointer;white-space:nowrap}
+.keys-note{font-size:13px;color:var(--muted);margin-top:12px}
+.dkey{margin:8px 0 10px}
+.dkey-t{font-weight:700;font-size:13px}
+.dkey-n{font-size:12.5px;color:var(--muted);margin:2px 0 5px}
+.dkey .hex{margin-top:3px}
+@media (max-width:700px){.keyrow{grid-template-columns:minmax(0,1fr)}}
+@keyframes sp{to{transform:rotate(360deg)}}
+.scroll{overflow-x:auto}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="brand">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+    TLS Handshake Live
+    <span class="badge" id="ossl">connecting to backend…</span>
+  </div>
+  <button class="btn small" id="themeBtn" title="Toggle light / dark">Theme</button>
+</header>
+
+<section class="card controls">
+  <div class="row">
+    <label class="field grow"><span>Server (domain or URL)</span><input id="host" class="big" value="google.com" spellcheck="false" autocomplete="off"></label>
+    <label class="field" style="min-width:90px;flex:0 0 90px"><span>Port</span><input id="port" value="443"></label>
+    <button class="btn primary" id="runBtn">Handshake ▸</button>
+  </div>
+  <div class="chips" id="presets"></div>
+  <div class="row">
+    <label class="field" style="flex:0 0 170px"><span>Protocol</span>
+      <select id="version"><option value="">Auto (1.3, else 1.2)</option><option value="1.3">TLS 1.3 only</option><option value="1.2">TLS 1.2 only</option></select></label>
+    <label class="field grow"><span>Key exchange groups to offer <span class="muted">(1 = forced)</span></span><input id="groups" class="mono" list="dl-groups" placeholder="default · e.g. X25519   or   ffdhe2048:X25519"></label>
+    <label class="field grow"><span>Signature schemes to offer</span><input id="sigalgs" class="mono" list="dl-sigalgs" placeholder="default · e.g. ecdsa_secp256r1_sha256"></label>
+    <label class="field grow"><span>Cipher suites to offer</span><input id="suites" class="mono" list="dl-suites" placeholder="default · e.g. TLS_CHACHA20_POLY1305_SHA256"></label>
+  </div>
+  <datalist id="dl-groups"></datalist><datalist id="dl-sigalgs"></datalist><datalist id="dl-suites"></datalist>
+  <div class="scen"><span class="lbl">Demo scenarios</span><span id="scenarios" class="chips"></span></div>
+  <div class="opts">
+    <label><input type="checkbox" id="stepMode"> Step mode: reveal one message per click (<kbd>→</kbd> / <kbd>Space</kbd>)</label>
+    <label>Animation delay <input type="range" id="speed" min="120" max="1600" value="650"></label>
+  </div>
+</section>
+
+<div class="narr" id="narr">Pick a server and press <b>Handshake</b>. Every handshake here is real, run live from this machine.</div>
+
+<section class="summary" id="summary"></section>
+
+<section class="main">
+  <div class="card">
+    <div class="seqhead">
+      <h2 style="margin:0">Handshake on the wire</h2>
+      <div class="legend">
+        <span><i style="background:var(--plain)"></i>plaintext</span>
+        <span><i style="background:var(--enc)"></i>encrypted</span>
+        <span><i style="background:var(--hrr)"></i>retry</span>
+        <span><i style="background:var(--alert)"></i>alert</span>
+        <span><i style="background:repeating-linear-gradient(90deg,var(--compat) 0 5px,transparent 5px 9px)"></i>compat CCS</span>
+      </div>
+      <div class="stepbar"><span id="stepInfo"></span><button class="btn small" id="nextBtn" disabled>Next ▸</button><button class="btn small" id="allBtn" disabled>Show all</button></div>
+    </div>
+    <div class="lanes"><div class="c">Client<small>this computer</small></div><div class="s"><span id="srvName">Server</span><small id="srvIp">&nbsp;</small></div></div>
+    <div class="seq" id="seq"><div class="empty">No handshake yet.</div></div>
+  </div>
+  <aside class="card detail" id="detailCard">
+    <h2>Message details</h2>
+    <div id="detail" class="muted">Click any arrow to see what is inside that message and why it exists.</div>
+  </aside>
+</section>
+
+<section class="two">
+  <div class="card"><h2>Offered → chosen</h2><div id="offer" class="muted">Run a handshake.</div></div>
+  <div class="card"><h2>Timing</h2><div id="timing" class="muted">Run a handshake.</div></div>
+</section>
+
+<section class="card" style="margin-bottom:14px"><h2>Certificate chain</h2><div id="chain" class="muted">Run a handshake.</div></section>
+
+<section class="card" style="margin-bottom:14px"><h2>Keys of this handshake</h2><div id="keys" class="muted">Run a handshake.</div></section>
+
+<section class="card" style="margin-bottom:14px">
+  <h2>What does this server accept? <span class="muted" style="text-transform:none;letter-spacing:0">(one handshake per option, everything else default)</span></h2>
+  <div class="row">
+    <button class="btn" data-probe="groups">Key exchange groups</button>
+    <button class="btn" data-probe="sigalgs">Signature schemes</button>
+    <button class="btn" data-probe="suites13">TLS 1.3 suites</button>
+    <button class="btn" data-probe="suites12">TLS 1.2 suites</button>
+    <button class="btn" data-probe="pref">Who decides: client or server?</button>
+  </div>
+  <div id="probe"></div>
+</section>
+
+<section class="card" style="margin-bottom:14px">
+  <h2>History <span class="muted" style="text-transform:none;letter-spacing:0">(click a row to replay it)</span></h2>
+  <div class="scroll"><table><thead><tr><th>#</th><th>Time</th><th>Server</th><th>Forced / offered</th><th>Result</th><th>Protocol</th><th>Key exchange</th><th>Signature</th><th>Cipher</th><th>TLS ms</th><th>RTs</th></tr></thead><tbody id="hist"><tr><td colspan="11" class="muted">Nothing yet.</td></tr></tbody></table></div>
+</section>
+
+</div>
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt = n => (Math.round(n * 10) / 10).toFixed(1);
+const LOCK = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>';
+
+const S = { info: null, steps: [], shown: 0, timer: null, runs: [], busy: false };
+
+const PRESETS = ["google.com","youtube.com","cloudflare.com","github.com","wikipedia.org","amazon.com","microsoft.com","pq.cloudflareresearch.com"];
+const SCENARIOS = [
+  {name:"Browser-like default", set:{}},
+  {name:"Force X25519", set:{groups:"X25519"}},
+  {name:"Force P-256", set:{groups:"P-256"}},
+  {name:"Force P-384", set:{groups:"P-384"}},
+  {name:"Force ECDSA cert", set:{sigalgs:"ecdsa_secp256r1_sha256"}},
+  {name:"Force RSA cert", set:{sigalgs:"rsa_pss_rsae_sha256"}},
+  {name:"Force Ed25519 (expect failure)", set:{sigalgs:"ed25519"}},
+  {name:"Trigger HelloRetryRequest", set:{groups:"ffdhe2048:X25519"}},
+  {name:"Force ChaCha20", set:{version:"1.3", suites:"TLS_CHACHA20_POLY1305_SHA256"}},
+  {name:"TLS 1.2 (legacy)", set:{version:"1.2"}},
+  {name:"Post-quantum hybrid", set:{version:"1.3", groups:"X25519MLKEM768"}, needs:"X25519MLKEM768"},
+  {name:"Pure ML-KEM", set:{version:"1.3", groups:"MLKEM768"}, needs:"MLKEM768"},
+];
+
+const EXPLAIN = {
+  ClientHello1: "The client's <b>menu</b>, sent in the clear: protocol versions, cipher suites, key-exchange groups and signature schemes it can handle. To save a round trip it also <b>guesses</b> one group and sends its public key share for it right away.",
+  ClientHello2: "Second attempt after a HelloRetryRequest: the same menu, but now carrying a key share for the group the server asked for.",
+  ServerHello13: "The server's <b>pick</b> from the menu, plus its own public key share. Each side combines its private key with the other's share (Diffie-Hellman / KEM) and gets the <b>same secret</b> without ever sending it. From this point on everything is encrypted.",
+  ServerHello12: "The server's pick. In TLS 1.2 one cipher-suite name fixes key exchange, authentication, cipher and hash together. Still unencrypted: the key exchange hasn't happened yet.",
+  HelloRetryRequest: "The server didn't accept the key share the client guessed, but it saw a group it likes in the menu. It names that group and asks the client to <b>try again</b>, which costs one extra round trip.",
+  compat: "A dummy message with no meaning in TLS 1.3. It's sent only so that old middleboxes that expect TLS 1.2 don't drop the connection (\"middlebox compatibility mode\").",
+  ccs: "TLS 1.2: \"everything I send after this is encrypted with the new keys.\"",
+  EncryptedExtensions: "Settings the server chose that don't affect key exchange, e.g. <b>ALPN</b> (HTTP/2 or HTTP/1.1). In TLS 1.3 these are hidden from eavesdroppers.",
+  Certificate13: "The server's certificate chain: its public key bound to the domain name, vouched for by a Certificate Authority. In TLS 1.3 this travels <b>encrypted</b>, so an eavesdropper can't see which certificate was sent.",
+  Certificate12: "The server's certificate chain: its public key bound to the domain name, vouched for by a Certificate Authority. In TLS 1.2 this is sent <b>in the clear</b>.",
+  CertificateVerify: "The server <b>signs a hash of the whole handshake so far</b> with its certificate's private key. That proves it owns the certificate. And because the hash covers the ClientHello, any tampering with the client's menu (a downgrade attack) is caught here.",
+  Finished: "A MAC over the entire transcript, keyed with the handshake secret. Each side sends one. If a single byte differed between what the two sides saw, this check fails and the connection dies.",
+  NewSessionTicket: "Sent <i>after</i> the handshake: a ticket the client can present next time to resume with a shorter handshake (PSK resumption).",
+  ServerKeyExchange: "TLS 1.2: the server's ephemeral (EC)DHE public key, <b>signed</b> with its certificate key. The signature is how you know it came from the real server.",
+  ServerHelloDone: "TLS 1.2: \"my part of the hello is done, your turn.\"",
+  ClientKeyExchange: "TLS 1.2: the client's (EC)DHE public key. After this, both sides can compute the shared secret.",
+  CertificateStatus: "A stapled OCSP response: fresh proof from the CA that the certificate hasn't been revoked.",
+  Alert: "The handshake was <b>aborted</b>. <code>handshake_failure</code> usually means nothing in the client's menu was acceptable to the server, e.g. you forced an algorithm it doesn't support.",
+};
+
+// ---------- setup ----------
+function initTheme(){
+  let t = null; try { t = localStorage.getItem("tls-theme"); } catch(e) {}
+  if (t) document.documentElement.dataset.theme = t;
+  $("#themeBtn").onclick = () => {
+    const cur = document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+    const nxt = cur === "light" ? "dark" : "light";
+    document.documentElement.dataset.theme = nxt;
+    try { localStorage.setItem("tls-theme", nxt); } catch(e) {}
+  };
+  if (!t && matchMedia("(prefers-color-scheme: light)").matches) document.documentElement.dataset.theme = "light";
+}
+
+function initControls(){
+  $("#presets").innerHTML = '<span class="lbl">Try</span>' + PRESETS.map(h => `<span class="chip click" data-h="${h}">${h}</span>`).join("");
+  $("#presets").onclick = e => { const h = e.target.dataset.h; if (h) { $("#host").value = h; run(); } };
+  $("#scenarios").innerHTML = SCENARIOS.map((s,i) => `<button class="btn small" data-s="${i}">${esc(s.name)}</button>`).join("");
+  $("#scenarios").onclick = e => {
+    const i = e.target.dataset.s; if (i === undefined) return;
+    const s = SCENARIOS[i];
+    for (const k of ["version","groups","sigalgs","suites"]) $("#"+k).value = s.set[k] || "";
+    run();
+  };
+  $("#runBtn").onclick = run;
+  for (const id of ["host","port","groups","sigalgs","suites"]) $("#"+id).addEventListener("keydown", e => { if (e.key === "Enter") run(); });
+  $("#nextBtn").onclick = () => nextStep();
+  $("#allBtn").onclick = () => { clearTimeout(S.timer); while (nextStep(true)); };
+  document.addEventListener("keydown", e => {
+    if (["INPUT","SELECT","TEXTAREA"].includes(document.activeElement.tagName)) return;
+    if (e.key === "ArrowRight" || e.key === " ") { e.preventDefault(); nextStep(); }
+  });
+  document.querySelectorAll("[data-probe]").forEach(b => b.onclick = () => probe(b.dataset.probe));
+}
+
+async function loadInfo(){
+  try {
+    const r = await fetch("/api/info"); S.info = await r.json();
+    $("#ossl").textContent = S.info.openssl;
+    const opt = list => list.map(x => `<option value="${x.name}">${x.supported ? "" : "not in your OpenSSL"}</option>`).join("");
+    $("#dl-groups").innerHTML = opt(S.info.groups);
+    $("#dl-sigalgs").innerHTML = opt(S.info.sigalgs);
+    $("#dl-suites").innerHTML = opt(S.info.suites13.concat(S.info.suites12));
+    const all = S.info.groups.concat(S.info.sigalgs);
+    SCENARIOS.forEach((s,i) => {
+      if (!s.needs) return;
+      const f = all.find(x => x.name === s.needs);
+      if (f && !f.supported) { const b = document.querySelector(`[data-s="${i}"]`); b.disabled = true; b.title = `${s.needs} needs OpenSSL 3.5+ or oqs-provider (you have ${S.info.openssl})`; }
+    });
+  } catch (e) {
+    $("#ossl").textContent = "backend offline";
+    narrate("err", "Can't reach the backend. Start <code>./build/tls_dashboard</code> and open <b>http://localhost:8088</b>.");
+  }
+}
+
+// ---------- running ----------
+function params(){
+  const p = new URLSearchParams();
+  p.set("host", $("#host").value.trim());
+  p.set("port", $("#port").value.trim() || "443");
+  const v = $("#version").value; if (v) p.set("version", v);
+  const g = $("#groups").value.trim(); if (g) p.set("groups", g);
+  const s = $("#sigalgs").value.trim(); if (s) p.set("sigalgs", s);
+  const su = $("#suites").value.trim().split(":").map(x => x.trim()).filter(Boolean);
+  const s13 = su.filter(x => x.startsWith("TLS_")), s12 = su.filter(x => !x.startsWith("TLS_"));
+  if (s13.length) p.set("suites", s13.join(":"));
+  if (s12.length) p.set("ciphers", s12.join(":"));
+  return p;
+}
+
+async function run(){
+  if (S.busy) return;
+  const p = params(); if (!p.get("host")) return;
+  S.busy = true; $("#runBtn").disabled = true; stopAnim();
+  narrate("busy", `<span class="spin"></span>Handshaking with <b>${esc(p.get("host"))}:${esc(p.get("port"))}</b> …`);
+  try {
+    const d = await (await fetch("/api/handshake?" + p)).json();
+    S.runs.push({d, when: new Date()}); renderHistory();
+    show(d, true);
+  } catch (e) {
+    narrate("err", "Backend not reachable. Is <code>tls_dashboard</code> still running?");
+  } finally { S.busy = false; $("#runBtn").disabled = false; }
+}
+
+function show(d, animate){
+  $("#srvName").textContent = d.host || "Server";
+  $("#srvIp").textContent = d.ip ? `${d.ip}:${d.port}` : " ";
+  renderSummary(d); renderOffer(d); renderTiming(d); renderChain(d); renderKeys(d);
+  buildSeq(d); startAnim(animate);
+  narrateResult(d);
+}
+
+// ---------- narration ----------
+function narrate(cls, html){ const n = $("#narr"); n.className = "narr " + cls; n.innerHTML = html; }
+function lastAlert(d){ const a = d.events.filter(e => e.kind === "alert"); return a.length ? a[a.length-1] : null; }
+function narrateResult(d){
+  if (d.rejected_locally) return narrate("err", `<b>Not sent.</b> Your OpenSSL (${esc(S.info?.openssl || "")}) can't put that in a ClientHello: <code>${esc(d.error)}</code>`);
+  if (!d.ok) {
+    const a = lastAlert(d);
+    if (a && a.dir === "in") return narrate("err", `<b>${esc(d.host)} refused.</b> It answered <code>${esc(a.name.replace("Alert: ",""))}</code>: nothing in your menu was acceptable. A client can only <i>restrict</i> the server's choice; it can't make the server support something.`);
+    return narrate("err", `<b>Failed:</b> <code>${esc(d.error)}</code>`);
+  }
+  const n = d.negotiated;
+  const sh = finalSH(d);
+  const rt = d.hrr ? `after a <b>HelloRetryRequest</b> (2 round trips): it didn't like the <code>${esc(firstCH(d)?.key_shares?.[0]?.group || "")}</code> key share and asked for <code>${esc(sh?.key_shares?.[0]?.group || n.group)}</code>` : `in <b>${n.version === "TLSv1.3" ? "one round trip" : "two round trips"}</b>`;
+  narrate("ok", `<b>${esc(d.host)}</b> chose <b>${esc(n.group)}</b> key exchange, <b>${esc(n.sig)}</b> signature and <b>${esc(n.cipher)}</b> over <b>${esc(n.version)}</b>, ${rt}. Took ${fmt(d.timing.tls)} ms.`);
+}
+const firstCH = d => d.hellos.find(h => h.client);
+const finalSH = d => [...d.hellos].reverse().find(h => !h.client && !h.hrr);
+
+// ---------- summary cards ----------
+function renderSummary(d){
+  const el = $("#summary");
+  if (!d.ok) { el.innerHTML = ""; return; }
+  const n = d.negotiated, sh = finalSH(d), ch = [...d.hellos].reverse().find(h => h.client);
+  const srvShare = sh?.key_shares?.[0], cliShare = ch?.key_shares?.find(k => k.group === srvShare?.group);
+  const leaf = d.chain[0];
+  const cards = [
+    ["Protocol", n.version, n.alpn ? `ALPN: ${n.alpn}` : "no ALPN"],
+    ["Key exchange", n.group, srvShare ? `shares: client ${cliShare?.len ?? "?"} B · server ${srvShare.len} B` : ""],
+    ["Server signature", n.sig, n.sig_iana || ""],
+    ["Cipher suite", n.cipher.replace(/^TLS_/, ""), ""],
+    ["Certificate key", leaf ? leaf.key : "—", leaf ? (d.verify.ok ? "trusted ✓" : d.verify.text) : ""],
+    ["Round trips", d.hrr ? "2 (HRR)" : (n.version === "TLSv1.3" ? "1" : "2"), `${d.events.length} messages`],
+  ];
+  el.innerHTML = cards.map(([k,v,s]) => `<div class="stat"><div class="k">${k}</div><div class="v">${esc(v).replace(/_/g,"_<wbr>")}</div><div class="s">${esc(s)}</div></div>`).join("");
+}
+
+// ---------- sequence diagram ----------
+function kindClass(e){
+  if (e.kind === "handshake") return e.encrypted ? "enc" : "plain";
+  if (e.kind === "alert") return "alert";
+  return e.kind;   // hrr | compat | ccs
+}
+function isTls13(d){ return d.negotiated.version === "TLSv1.3" || d.hellos.some(h => !h.client && !h.hrr && h.versions.includes("TLS 1.3")); }
+
+function buildSeq(d){
+  const seq = $("#seq"); seq.innerHTML = ""; S.steps = []; S.shown = 0;
+  if (d.rejected_locally || !d.events.length) {
+    seq.innerHTML = `<div class="empty">${d.rejected_locally ? "Nothing was sent: the local OpenSSL refused the offer." : esc(d.error || "No messages.")}</div>`;
+    updStep(); return;
+  }
+  const tls13 = isTls13(d);
+  let hi = 0, chCount = 0, keysDone = false, postDone = false;
+  const add = el => { seq.appendChild(el); S.steps.push(el); };
+  const divider = (text, cls) => { const x = document.createElement("div"); x.className = "div " + cls; x.textContent = text; add(x); };
+  d.events.forEach(e => {
+    if (e.post && !postDone) { divider(`Handshake complete · ${fmt(d.timing.tls)} ms · application data can flow`, "done"); postDone = true; }
+    const hello = (e.kind === "handshake" || e.kind === "hrr") && (e.type === 1 || e.type === 2) ? d.hellos[hi++] : null;
+    if (e.type === 1 && e.kind === "handshake") chCount++;
+    const el = document.createElement("div");
+    el.className = `msg ${e.dir} k-${kindClass(e)}${e.post ? " post" : ""}`;
+    el.innerHTML = `<div class="label">${e.encrypted ? LOCK : ""}${esc(e.name)}</div><div class="line"></div><div class="meta">${e.len} B · +${fmt(e.t)} ms${e.encrypted ? " · encrypted" : ""}</div>`;
+    const nth = chCount;
+    el.onclick = () => detail(d, e, hello, el, nth, tls13);
+    add(el);
+    if (tls13 && e.type === 2 && e.kind === "handshake" && !keysDone) { divider("🔑 Shared secret derived: everything below is encrypted", "keys"); keysDone = true; }
+    if (!tls13 && e.type === 16 && e.kind === "handshake" && !keysDone) { divider("🔑 Both key shares exchanged: shared secret derived (each side encrypts after its ChangeCipherSpec)", "keys"); keysDone = true; }
+  });
+  if (!d.ok) divider("✗ Handshake aborted", "fail");
+}
+
+function startAnim(animate){
+  clearTimeout(S.timer);
+  if (!animate) { while (nextStep(true)); return; }
+  if ($("#stepMode").checked) { nextStep(); return; }
+  const tick = () => { if (nextStep()) S.timer = setTimeout(tick, +$("#speed").value); };
+  tick();
+}
+function stopAnim(){ clearTimeout(S.timer); }
+function nextStep(quiet){
+  if (S.shown >= S.steps.length) return false;
+  const el = S.steps[S.shown++];
+  el.classList.add("show");
+  if (!quiet) {
+    el.scrollIntoView({block: "nearest", behavior: "smooth"});
+    if (el.classList.contains("msg")) el.click();
+  }
+  updStep();
+  return S.shown < S.steps.length;
+}
+function updStep(){
+  const total = S.steps.length, done = S.shown >= total;
+  $("#stepInfo").textContent = total ? `${S.shown} / ${total}` : "";
+  $("#nextBtn").disabled = done; $("#allBtn").disabled = done;
+}
+
+// ---------- detail panel ----------
+const chips = (list, cls = () => "", max = 0) => {
+  if (!list || !list.length) return '<span class="muted">none</span>';
+  const one = x => `<span class="chip ${cls(x)}">${esc(x)}</span>`;
+  // keep highlighted chips visible even when the list is collapsed
+  const shown = max && list.length > max ? list.filter((x,i) => i < max || /win|ks/.test(cls(x))) : list;
+  const hidden = list.length - shown.length;
+  const id = "c" + Math.random().toString(36).slice(2);
+  return `<div class="chips" id="${id}">${shown.map(one).join("")}${hidden ? `<span class="chip more" data-more="${id}">+${hidden} more</span>` : ""}</div>`
+       + (hidden ? `<template id="${id}-all">${list.map(one).join("")}</template>` : "");
+};
+document.addEventListener("click", e => {
+  const id = e.target.dataset && e.target.dataset.more; if (!id) return;
+  document.getElementById(id).innerHTML = document.getElementById(id + "-all").innerHTML;
+});
+const kv = rows => `<dl class="kv">${rows.filter(r => r[1] !== undefined && r[1] !== "").map(([k,v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("")}</dl>`;
+
+function detail(d, e, h, el, nth, tls13){
+  document.querySelectorAll(".msg.sel").forEach(x => x.classList.remove("sel")); el.classList.add("sel");
+  let key = e.name, body = "";
+  if (e.kind === "alert") key = "Alert";
+  else if (e.name === "ClientHello") key = nth > 1 ? "ClientHello2" : "ClientHello1";
+  else if (e.name === "ServerHello") key = tls13 ? "ServerHello13" : "ServerHello12";
+  else if (e.name === "Certificate") key = tls13 ? "Certificate13" : "Certificate12";
+  else if (e.kind === "compat" || e.kind === "ccs") key = e.kind;
+
+  if (h && h.client) {
+    const ksGroups = h.key_shares.map(k => k.group);
+    body += `<div class="sect">Versions</div>${chips(h.versions)}`;
+    body += `<div class="sect">Key exchange groups <span class="muted">(dashed = key share sent)</span></div>${chips(h.groups, g => ksGroups.includes(g) ? "ks" : g === "GREASE" ? "dim" : "")}`;
+    body += `<div class="sect">Key shares</div>${chips(h.key_shares.map(k => `${k.group} · ${k.len} B`))}`;
+    body += `<div class="sect">Signature schemes</div>${chips(h.sigalgs)}`;
+    body += `<div class="sect">Cipher suites (${h.suites.length})</div>${chips(h.suites, () => "", 10)}`;
+    body += `<div class="sect">Other</div>${kv([["SNI", h.sni || "(none)"], ["ALPN", h.alpn.join(", ")], ["Size", h.length + " bytes"]])}`;
+    body += `<div class="sect">Extensions (${h.extensions.length})</div>${chips(h.extensions)}`;
+  } else if (h && h.hrr) {
+    body += kv([["Server wants group", h.key_shares[0]?.group], ["Cipher suite", h.suites[0]], ["Version", h.versions[0]]]);
+  } else if (h) {
+    body += kv([["Version", h.versions[0] || "TLS 1.2 (no supported_versions)"], ["Cipher suite", h.suites[0]],
+                ["Key share", h.key_shares[0] ? `${h.key_shares[0].group} · ${h.key_shares[0].len} B` : "in ServerKeyExchange (TLS 1.2)"],
+                ["Extensions", h.extensions.join(", ")]]);
+  } else if (e.name === "Certificate" && e.dir === "in" && d.chain.length) {
+    body += kv(d.chain.map((c,i) => [i === 0 ? "Leaf" : `Intermediate ${i}`, `${cn(c.subject)} · ${c.key}`]));
+  } else if (e.name === "CertificateVerify" || e.name === "ServerKeyExchange") {
+    body += kv([["Signature", d.negotiated.sig], ["Scheme", d.negotiated.sig_iana], ["Signed with", d.chain[0]?.key]]);
+  } else if (e.name === "EncryptedExtensions") {
+    body += kv([["ALPN chosen", d.negotiated.alpn || "(none)"]]);
+  } else if (e.kind === "alert") {
+    body += kv([["Alert", e.name.replace("Alert: ","")], ["Sent by", e.dir === "out" ? "client" : "server"]]);
+  }
+  body += keysForMessage(d, e, h, tls13);
+  $("#detail").className = "";
+  $("#detail").innerHTML = `<h3 class="k-${kindClass(e)}" style="color:var(--c)">${esc(e.name)}</h3>
+    <div class="pills"><span class="pill c k-${kindClass(e)}">${e.dir === "out" ? "client → server" : "server → client"}</span><span class="pill">${e.len} bytes</span><span class="pill">+${fmt(e.t)} ms</span><span class="pill">${e.encrypted ? "encrypted" : "plaintext"}</span></div>
+    <p class="explain">${EXPLAIN[key] || ""}</p>${body}`;
+}
+
+// ---------- offered vs chosen ----------
+const ALIAS = {prime256v1:"secp256r1", "p-256":"secp256r1", "p-384":"secp384r1", "p-521":"secp521r1"};
+const norm = s => { s = String(s || "").toLowerCase(); return ALIAS[s] || s; };
+function renderOffer(d){
+  const el = $("#offer");
+  const ch = firstCH(d);
+  if (!ch) { el.className = "muted"; el.textContent = d.rejected_locally ? "Nothing was sent." : "No ClientHello captured."; return; }
+  el.className = "";
+  const n = d.negotiated, ks = ch.key_shares.map(k => k.group);
+  const row = (title, list, win, extra = () => "") =>
+    `<div class="orow"><div class="h">${title}<br><span class="muted">${list.length} offered</span></div>${chips(list, x => (d.ok && norm(x) === norm(win) ? "win " : "") + extra(x), 12)}</div>`;
+  el.innerHTML =
+    row("Key exchange", ch.groups, n.group, g => ks.includes(g) ? "ks" : "") +
+    row("Signature", ch.sigalgs, n.sig_iana) +
+    row("Cipher suite", ch.suites, n.cipher) +
+    `<div class="muted" style="font-size:12px;margin-top:8px">Green = what the server picked. Dashed = the client already sent a key share for it.${d.ok ? "" : " The server picked nothing."}</div>`;
+}
+
+// ---------- timing ----------
+function renderTiming(d){
+  const el = $("#timing"), t = d.timing;
+  if (d.rejected_locally) { el.className = "muted"; el.textContent = "Nothing was sent."; return; }
+  el.className = "";
+  const total = Math.max(t.dns + t.tcp + t.tls, 0.1);
+  const seg = (v, c, l) => `<div style="width:${Math.max(v/total*100, 0)}%;background:var(${c})" title="${l} ${fmt(v)} ms">${v/total > .12 ? `${l} ${fmt(v)}` : ""}</div>`;
+  const rtts = t.tcp > 0 ? t.tls / t.tcp : 0;
+  el.innerHTML = `<div class="bar">${seg(t.dns,"--dns","DNS")}${seg(t.tcp,"--tcp","TCP")}${seg(t.tls,"--tls","TLS")}</div>
+    ${kv([["DNS lookup", fmt(t.dns)+" ms"], ["TCP connect", fmt(t.tcp)+" ms  ≈ 1 network round trip"], ["TLS handshake", fmt(t.tls)+" ms"], ["Server", d.ip]])}
+    <div class="timing-note">${t.tcp > 0 && d.ok ? `TLS took <b>${rtts.toFixed(1)}×</b> the network round-trip time. ${d.hrr ? "The HelloRetryRequest added a round trip." : (d.negotiated.version === "TLSv1.3" ? "TLS 1.3 needs one round trip; the rest is server crypto and processing." : "TLS 1.2 needs two round trips.")}` : ""}</div>`;
+}
+
+// ---------- certificate chain ----------
+const cn = s => (String(s).match(/CN\s*=\s*([^,]+)/) || [,s])[1].trim();
+const field = (s, k) => (String(s).match(new RegExp(k + "\\s*=\\s*([^,]+)")) || [,""])[1].trim();
+function renderChain(d){
+  const el = $("#chain");
+  if (!d.chain.length) { el.className = "muted"; el.textContent = d.ok ? "No certificate." : "No certificate received (handshake stopped earlier)."; return; }
+  el.className = "";
+  const cards = d.chain.map((c,i) => `<div class="cert"><div class="role">${i === 0 ? "Leaf (the server)" : "Intermediate CA"}</div>
+      <div class="cn">${esc(cn(c.subject))}</div>
+      ${kv([["Org", field(c.subject,"O")], ["Key", c.key], ["Signed with", c.sigalg], ["Issued by", cn(c.issuer)], ["Valid", `${c.not_before} → ${c.not_after}`]])}
+      ${i === 0 && c.sans.length ? `<div class="sect">Valid for (${c.san_total} names)</div>${chips(c.sans.concat(c.san_total > c.sans.length ? [`+${c.san_total - c.sans.length} more`] : []))}` : ""}
+    </div>`);
+  const root = cn(d.chain[d.chain.length-1].issuer);
+  el.innerHTML = `<span class="verify ${d.verify.ok ? "ok" : "bad"}">${d.verify.ok ? "✓ Chain verified against this computer's trusted CAs" : "✗ " + esc(d.verify.text)}</span>
+    <div class="chain">${cards.join('<div class="arrowx">signed by<br>←</div>')}<div class="arrowx">signed by<br>←</div>
+    <div class="cert" style="flex:0 1 200px;border-style:dashed"><div class="role">Root CA (not sent)</div><div class="cn">${esc(root)}</div><div class="muted" style="font-size:13px">Already in your OS / browser trust store.</div></div></div>`;
+}
+
+// ---------- keys for one message (detail panel) ----------
+function secretOf(d, label){ const k = (d.keylog || []).find(x => x.label === label); return k ? k.secret : ""; }
+function keyBlock(title, note, hex){
+  return `<div class="dkey"><div class="dkey-t">${title}</div>${note ? `<div class="dkey-n">${note}</div>` : ""}${hexBox(hex)}</div>`;
+}
+function secretBlock(d, label){
+  const [n, w] = SECRET_INFO[label] || [label, ""];
+  const hex = secretOf(d, label);
+  return keyBlock(`${esc(n)}${hex ? " · " + hex.length / 2 + " B" : ""}`, `<code>${esc(label)}</code>${w ? " · " + w : ""}`, hex);
+}
+function keysForMessage(d, e, h, tls13){
+  let out = "";
+  if (h && h.client) {
+    out += keyBlock("Client random · 32 B", "Fresh randomness; mixed into every key of this connection.", h.random);
+    h.key_shares.forEach(k => {
+      out += keyBlock(`Client public key share · ${esc(k.group)} · ${k.len} B`, "The client's public half of the key exchange (its private half stays on the laptop).", k.hex);
+    });
+    if (!h.key_shares.length) out += `<div class="dkey-n">No key share in this ClientHello (TLS 1.2 sends it later, in ClientKeyExchange).</div>`;
+  } else if (h && h.hrr) {
+    out += keyBlock("\"Random\" · fixed magic value", "Not random: SHA-256 of the text \"HelloRetryRequest\". This is how a retry is recognised.", h.random);
+    out += `<div class="dkey-n">No key here: the server only names the group it wants (${esc(h.key_shares[0] ? h.key_shares[0].group : "?")}), and the client must send a new key share for it.</div>`;
+  } else if (h) {
+    out += keyBlock("Server random · 32 B", "The server's fresh randomness.", h.random);
+    h.key_shares.forEach(k => {
+      out += keyBlock(`Server public key share · ${esc(k.group)} · ${k.len} B`, "The server's public half. Combined with the client's private half, it gives the shared secret.", k.hex);
+    });
+    if (tls13) {
+      out += `<div class="dkey-n">Right after this message both sides compute the shared secret and derive the handshake secrets below. Everything after this point is encrypted.</div>`;
+      out += secretBlock(d, "CLIENT_HANDSHAKE_TRAFFIC_SECRET") + secretBlock(d, "SERVER_HANDSHAKE_TRAFFIC_SECRET");
+    } else {
+      out += `<div class="dkey-n">TLS 1.2: the key shares come later (ServerKeyExchange, ClientKeyExchange); the master secret is made after ClientKeyExchange.</div>`;
+    }
+  } else if (!tls13 && e.name === "ClientKeyExchange") {
+    out += `<div class="dkey-n">After this message both sides can compute the master secret, the source of every TLS 1.2 key:</div>` + secretBlock(d, "CLIENT_RANDOM");
+  } else if (e.kind === "compat" || (e.kind === "ccs" && tls13)) {
+    out += `<div class="dkey-n">No key involved: this is a dummy compatibility message.</div>`;
+  } else if (e.kind === "ccs") {
+    out += `<div class="dkey-n">Not encrypted itself: it announces "everything I send after this is encrypted" with keys from the master secret.</div>`;
+  } else if (!e.encrypted) {
+    out += `<div class="dkey-n">Not encrypted: no key protects this message${tls13 ? "" : " (in TLS 1.2 encryption starts after each side's ChangeCipherSpec)"}.</div>`;
+  } else if (tls13) {
+    const label = e.post ? (e.dir === "in" ? "SERVER_TRAFFIC_SECRET_0" : "CLIENT_TRAFFIC_SECRET_0")
+                         : (e.dir === "in" ? "SERVER_HANDSHAKE_TRAFFIC_SECRET" : "CLIENT_HANDSHAKE_TRAFFIC_SECRET");
+    out += `<div class="dkey-n">This message was encrypted (AEAD: ${esc(d.negotiated.cipher || "the chosen cipher suite")}) with keys derived from:</div>` + secretBlock(d, label);
+    if (e.name === "Finished") out += `<div class="dkey-n">The Finished value itself is a MAC computed with a key derived from this same secret, over the hash of the whole handshake.</div>`;
+  } else {
+    out += `<div class="dkey-n">Encrypted with keys derived from the TLS 1.2 master secret:</div>` + secretBlock(d, "CLIENT_RANDOM");
+  }
+  return out ? `<div class="sect">Keys</div>${out}` : "";
+}
+
+// ---------- keys ----------
+const SECRET_INFO = {
+  CLIENT_HANDSHAKE_TRAFFIC_SECRET: ["Client handshake secret", "Encrypts the client's own handshake messages (its Finished)."],
+  SERVER_HANDSHAKE_TRAFFIC_SECRET: ["Server handshake secret", "Encrypts the server's EncryptedExtensions, Certificate, CertificateVerify and Finished: everything with a padlock before the handshake ends."],
+  CLIENT_TRAFFIC_SECRET_0: ["Client data secret", "Encrypts what the client sends after the handshake (for example the web request)."],
+  SERVER_TRAFFIC_SECRET_0: ["Server data secret", "Encrypts what the server sends after the handshake (the web page, NewSessionTicket)."],
+  EXPORTER_SECRET: ["Exporter secret", "Lets other protocols derive extra keys from this connection. Not used for encryption here."],
+  CLIENT_RANDOM: ["Master secret (TLS 1.2)", "In TLS 1.2 every encryption key is cut from this one secret."],
+};
+const SECRET_ORDER = ["CLIENT_RANDOM", "CLIENT_HANDSHAKE_TRAFFIC_SECRET", "SERVER_HANDSHAKE_TRAFFIC_SECRET", "CLIENT_TRAFFIC_SECRET_0", "SERVER_TRAFFIC_SECRET_0", "EXPORTER_SECRET"];
+function hexBox(hex){
+  if (!hex) return '<div class="hex muted">(not available)</div>';
+  if (hex.length <= 96) return `<div class="hex">${esc(hex)}</div>`;
+  const id = "h" + Math.random().toString(36).slice(2);
+  return `<div class="hex" id="${id}">${esc(hex.slice(0, 96))}… <span class="more" data-full="${esc(hex)}" data-target="${id}">show all ${hex.length / 2} bytes</span></div>`;
+}
+document.addEventListener("click", e => {
+  const t = e.target; if (!t.dataset || !t.dataset.full) return;
+  document.getElementById(t.dataset.target).textContent = t.dataset.full;
+});
+function keyRow(name, what, hex){
+  return `<div class="keyrow"><div><div class="kname">${esc(name)}</div><div class="kwhat">${what}</div></div>${hexBox(hex)}</div>`;
+}
+function renderKeys(d){
+  const el = $("#keys");
+  if (d.rejected_locally) { el.className = "muted"; el.textContent = "Nothing was sent, so no keys exist."; return; }
+  el.className = "";
+  const ch = [...d.hellos].reverse().find(h => h.client), sh = finalSH(d);
+  let html = `<div class="keys-step">1 · Fresh randomness (sent in the clear)</div>`;
+  html += keyRow("Client random", "32 new random bytes from the ClientHello. Makes every connection's keys unique.", ch && ch.random);
+  html += keyRow("Server random", "32 new random bytes from the ServerHello.", sh && sh.random);
+
+  html += `<div class="keys-step">2 · Public key shares: the two "halves" (sent in the clear)</div>`;
+  const cliShare = ch && sh && sh.key_shares[0] ? (ch.key_shares.find(k => k.group === sh.key_shares[0].group) || ch.key_shares[0]) : (ch && ch.key_shares[0]);
+  const srvShare = sh && sh.key_shares[0];
+  if (!cliShare && !srvShare) {
+    html += `<p class="keys-note">TLS 1.2 sends the key shares in ServerKeyExchange / ClientKeyExchange, which this view doesn't decode. The master secret below is what they produce.</p>`;
+  } else {
+    html += keyRow(`Client public key${cliShare ? " · " + cliShare.group + " · " + cliShare.len + " B" : ""}`, "The client's half of the key exchange. Its private half never leaves the laptop.", cliShare && cliShare.hex);
+    html += keyRow(`Server public key${srvShare ? " · " + srvShare.group + " · " + srvShare.len + " B" : ""}`, "The server's half. Combining it with the client's private half gives the shared secret.", srvShare && srvShare.hex);
+  }
+
+  html += `<div class="keys-step">3 · Secrets both sides derived (never sent)</div>`;
+  const kl = (d.keylog || []).slice().sort((a, b) => SECRET_ORDER.indexOf(a.label) - SECRET_ORDER.indexOf(b.label));
+  if (!kl.length) {
+    html += `<p class="keys-note">No secrets: the handshake stopped before a shared key was made.</p>`;
+  } else {
+    kl.forEach(k => { const [n, w] = SECRET_INFO[k.label] || [k.label, ""]; html += keyRow(`${n} · ${k.secret.length / 2} B`, `<code>${esc(k.label)}</code><br>${w}`, k.secret); });
+    if (!d.ok) html += `<p class="keys-note">The handshake failed after the key exchange, so only the handshake secrets exist; no data secrets were made.</p>`;
+    html += `<p><button class="btn small" id="saveKeylog">Save key log for Wireshark</button></p>`;
+  }
+  html += `<p class="keys-note">Private keys are never shown: OpenSSL keeps them inside. These secrets are only for this one connection; anyone holding them could decrypt a recording of it, so treat saved key logs like passwords.</p>`;
+  el.innerHTML = html;
+  const btn = $("#saveKeylog");
+  if (btn) btn.onclick = () => {
+    const blob = new Blob([kl.map(k => k.line).join("\n") + "\n"], {type: "text/plain"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = `tls-keylog-${d.host}.txt`;
+    document.body.appendChild(a); a.click(); a.remove();
+  };
+}
+
+// ---------- probing ----------
+async function probe(axis){
+  const p = params(); p.set("axis", axis); ["groups","sigalgs","suites","ciphers"].forEach(k => p.delete(k));
+  if (axis === "suites12") p.delete("version");
+  const el = $("#probe");
+  document.querySelectorAll("[data-probe]").forEach(b => b.disabled = true);
+  el.innerHTML = `<div class="muted" style="margin-top:12px"><span class="spin"></span>Probing <b>${esc(p.get("host"))}</b>: one real handshake per option…</div>`;
+  try {
+    const d = await (await fetch("/api/probe?" + p)).json();
+    if (d.pref) {
+      el.innerHTML = `<div class="scroll" style="margin-top:12px"><table><thead><tr><th>What</th><th>Offer A, B</th><th>Server picked</th><th>Offer B, A</th><th>Server picked</th><th>Who decided</th></tr></thead><tbody>${
+        d.pref.map(r => `<tr><td>${esc(r.what)}</td><td class="mono">${esc(r.a)}, ${esc(r.b)}</td><td class="mono">${esc(r.ab)}</td><td class="mono">${esc(r.b)}, ${esc(r.a)}</td><td class="mono">${esc(r.ba)}</td>
+          <td class="${r.verdict === "server" ? "good" : r.verdict === "client" ? "" : "muted"}">${r.verdict === "server" ? "SERVER (its own order)" : r.verdict === "client" ? "CLIENT's order followed" : "inconclusive"}</td></tr>`).join("")
+      }</tbody></table></div><p class="muted" style="font-size:13px">Same answer both times = the server applies its own preference. Different answers = it follows the client's order. Either way the <i>server</i> makes the call.</p>`;
+    } else {
+      const ok = d.items.filter(x => x.status === "ok").length;
+      el.innerHTML = `<p style="margin:12px 0 0"><b>${ok}</b> of ${d.items.filter(x => x.status !== "local").length} testable options accepted.</p><div class="probe-grid">${
+        d.items.map(x => `<div class="pcell ${x.status}"><div class="n">${x.status === "ok" ? "✓" : x.status === "refused" ? "✗" : "–"} ${esc(x.item)}${x.hrr ? ' <span class="chip" style="border-color:var(--hrr);color:var(--hrr)">HRR</span>' : ""}</div>
+          <div class="d">${x.status === "ok" ? `${fmt(x.ms)} ms · ${esc(x.detail)}` : x.status === "refused" ? "server refused" : "not supported by your OpenSSL"}</div></div>`).join("")
+      }</div>`;
+    }
+  } catch (e) { el.innerHTML = `<p class="bad">Probe failed: backend not reachable.</p>`; }
+  document.querySelectorAll("[data-probe]").forEach(b => b.disabled = false);
+}
+
+// ---------- history ----------
+function renderHistory(){
+  $("#hist").innerHTML = S.runs.map((r,i) => {
+    const d = r.d, o = d.offer, n = d.negotiated;
+    const forced = [o.version !== "auto" ? "TLS " + o.version : "", o.groups && "groups=" + o.groups, o.sigalgs && "sig=" + o.sigalgs, o.suites && "suites=" + o.suites, o.ciphers && "1.2=" + o.ciphers].filter(Boolean).join("  ") || "default";
+    return `<tr class="hist" data-i="${i}"><td>${i+1}</td><td>${r.when.toLocaleTimeString()}</td><td>${esc(d.host)}</td><td class="mono">${esc(forced)}</td>
+      <td class="${d.ok ? "good" : "bad"}">${d.ok ? "✓ OK" : d.rejected_locally ? "not sent" : "✗ refused"}</td>
+      <td>${esc(n.version)}</td><td class="mono">${esc(n.group)}</td><td class="mono">${esc(n.sig)}</td><td class="mono">${esc(n.cipher)}</td>
+      <td>${d.rejected_locally ? "" : fmt(d.timing.tls)}</td><td>${d.ok ? (d.hrr ? 2 : n.version === "TLSv1.3" ? 1 : 2) : ""}</td></tr>`;
+  }).reverse().join("");
+  document.querySelectorAll("tr.hist").forEach(tr => tr.onclick = () => show(S.runs[+tr.dataset.i].d, false));
+}
+
+initTheme(); initControls(); loadInfo();
+</script>
+</body>
+</html>
